@@ -88,6 +88,7 @@ def render_overlay(rgb, intrinsics, left_uv, right_uv, midpoints, *,
     texture = None
     mask_texture = None
     panel = None
+    hud_on=False
     pygame.display.init()
     try:
         pygame.display.gl_set_attribute(pygame.GL_CONTEXT_MAJOR_VERSION, 2)
@@ -95,7 +96,8 @@ def render_overlay(rgb, intrinsics, left_uv, right_uv, midpoints, *,
         pygame.display.gl_set_attribute(pygame.GL_DOUBLEBUFFER, 1)
         pygame.display.gl_set_attribute(pygame.GL_DEPTH_SIZE, 24)
         flags = pygame.OPENGL | pygame.DOUBLEBUF | (pygame.RESIZABLE if show else pygame.HIDDEN)
-        pygame.display.set_mode((w, h), flags)
+        from .gl_context import create_window
+        create_window(pygame,gl,(w,h),flags)
         pygame.display.set_caption("F2F - RGB results")
         panel = InstructionsPanel(pygame, gl)
         renderer = gl.glGetString(gl.GL_RENDERER).decode("utf-8", errors="replace")
@@ -232,9 +234,10 @@ def render_overlay(rgb, intrinsics, left_uv, right_uv, midpoints, *,
                     gl.glEnd()
             state = "stable" if converged else "NOT CONVERGED"
             if overlays_on and rings_on:
-                lines(ring_lines,(1.,.12,.12,1.),1.8)
-            panel.draw([
-                "X: rings   T: wireframe   [ / ]: opacity   K: mask   E: edges   M: midpoint   P: pairs   O: overlays   S: save   ESC / Q: close",
+                lines(ring_lines,(1.,.12,.12,1.),1.)
+            if hud_on:
+                panel.draw([
+                "F1: hide HUD   X: rings   T: wireframe   [ / ]: opacity   K: mask   E: edges   M: midpoint   P: pairs   O: overlays   S: save   ESC / Q: close",
                 "Cyan: visible mesh edges | Purple: SAM3 mask | Blue/orange: edges | Green: midpoint guide",
                 f"Pairing: {state} | {len(midpoint_dots)}/{len(midpoints)} drawn"
                 + (f" ({inferred_count} inferred)" if inferred_count is not None else "") + " | "
@@ -267,6 +270,8 @@ def render_overlay(rgb, intrinsics, left_uv, right_uv, midpoints, *,
                 elif event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_ESCAPE, pygame.K_q):
                         running = False
+                    elif event.key == pygame.K_F1:
+                        hud_on=not hud_on
                     elif event.key == pygame.K_k:
                         mask_on = not mask_on
                     elif event.key == pygame.K_t:
@@ -303,3 +308,4 @@ def render_overlay(rgb, intrinsics, left_uv, right_uv, midpoints, *,
         if texture is not None:
             gl.glDeleteTextures([texture])
         pygame.display.quit()
+

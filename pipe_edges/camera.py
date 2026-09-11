@@ -43,6 +43,7 @@ def capture(folder, *, preview=True, timeout=20., warmup=15, burst_frames=45):
     burst, burst_rgb = [], []
     reference_gray = features = None
     motion_resets = 0
+    sampling_started = None
     try:
         progress("Camera", "Searching for the Gemini camera...")
         log_dir = Path(folder).resolve().parent / 'logs'
@@ -86,6 +87,8 @@ def capture(folder, *, preview=True, timeout=20., warmup=15, burst_frames=45):
                 if action == "cancel":
                     raise KeyboardInterrupt
                 capture_requested |= action == "capture"
+            if sampling_started is None and count >= warmup and (capture_requested or not preview):
+                sampling_started = time.monotonic()
             frames = pipeline.wait_for_frames(200)
             if not frames:
                 if time.monotonic() > deadline:
@@ -143,6 +146,8 @@ def capture(folder, *, preview=True, timeout=20., warmup=15, burst_frames=45):
                 last_update = now
             if count < warmup or (preview and not capture_requested):
                 continue
+            if sampling_started is None:
+                sampling_started = time.monotonic()
             gray = cv2.cvtColor(rgb,cv2.COLOR_RGB2GRAY)
             if not burst:
                 reference_gray = gray
@@ -168,6 +173,8 @@ def capture(folder, *, preview=True, timeout=20., warmup=15, burst_frames=45):
                 progress("Capture", f"Burst {len(burst)}/{burst_frames} frames")
             if len(burst)<burst_frames:
                 continue
+            sampling_time_s = time.monotonic() - sampling_started
+            progress("Capture", f"Total sampling time: {sampling_time_s:.3f} s ({burst_frames} frames; {motion_resets} motion restarts).")
             from .depth_fusion import fuse_depth
             progress("Capture", "Rejecting depth outliers and computing temporal uncertainty...")
             depth_m,stats = fuse_depth(burst)
@@ -185,6 +192,7 @@ def capture(folder, *, preview=True, timeout=20., warmup=15, burst_frames=45):
                     "rectified": True, "camera": name, "depth_units": "metres",
                     "alignment": "Orbbec software D2C, TargetDistortion=0, GapFillCopy=0",
                     "burst_frames":burst_frames,"motion_restarts":motion_resets,
+                    "sampling_time_s":sampling_time_s,
                     "fusion":"temporal median/MAD rejection, trimmed mean; 60% minimum support"}
             (folder / "intrinsics.json").write_text(json.dumps(info, indent=2), encoding="utf-8")
             progress("Capture", f"Saved: {folder.resolve()}")

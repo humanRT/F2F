@@ -104,6 +104,38 @@ def mask_path(mask, samples=240):
     return mask, _resample(path[selected], samples)
 
 
+def select_mask_region(mask, *, region=None, seed=None, rgb=None, interactive=False):
+    """Select one visible section, preserving occlusions instead of filling them."""
+    mask=np.asarray(mask,bool)
+    labels,count=ndimage.label(mask,np.ones((3,3)))
+    sizes=np.bincount(labels.ravel())
+    sizes[0]=0
+    if count==0 or sizes.max()<25:
+        raise ValueError("The selected pipe mask is empty or too small.")
+    ordered=np.argsort(-sizes)
+    components=[int(i) for i in ordered if sizes[i]>=max(25,.03*sizes.max())]
+    chosen=region
+    if chosen is None and seed is not None:
+        x,y=seed
+        if 0<=x<mask.shape[1] and 0<=y<mask.shape[0] and labels[y,x] in components:
+            chosen=components.index(int(labels[y,x]))
+    if chosen is None and len(components)==1:
+        chosen=0
+    if chosen is None and interactive:
+        from .mask_picker import pick_mask
+        from .progress import progress
+        progress("Mask",f"{len(components)} disconnected visible sections: select one in the OpenGL window.")
+        masks=np.stack([labels==i for i in components])
+        chosen=pick_mask(rgb,masks,None,range(len(components)),label="section")
+    if chosen is None:
+        raise ValueError(f"Pipe has {len(components)} disconnected visible sections. Use --show to select one or --region INDEX (0 to {len(components)-1}).")
+    if not 0<=chosen<len(components):
+        raise ValueError(f"--region must be between 0 and {len(components)-1}.")
+    selected=labels==components[chosen]
+    return selected,{"visible_regions":len(components),"selected_region":int(chosen),
+                     "region_pixels":int(selected.sum()),"excluded_mask_pixels":int(mask.sum()-selected.sum())}
+
+
 def extract_edges(mask, samples=240):
     """Trace first boundary crossing on each side of the local 2D skeleton normal.
 

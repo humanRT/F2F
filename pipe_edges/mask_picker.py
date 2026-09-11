@@ -4,7 +4,7 @@ from .gl_preview import GLPreview
 from .gl_overlay import image_viewport
 
 
-def pick_mask(rgb, masks, scores, candidates, *, visible=True):
+def pick_mask(rgb, masks, scores, candidates, *, visible=True, label="instance"):
     rgb=np.asarray(rgb,dtype=np.uint8)
     h,w=rgb.shape[:2]
     candidates=list(map(int,candidates))
@@ -15,7 +15,7 @@ def pick_mask(rgb, masks, scores, candidates, *, visible=True):
     cached=None
     hint="Click the intended pipe, then press ENTER."
     try:
-        pg.display.set_caption("F2F - Select pipe")
+        pg.display.set_caption("F2F - Select visible pipe section" if label=="section" else "F2F - Select pipe")
         texture=gl.glGenTextures(1)
         gl.glBindTexture(gl.GL_TEXTURE_2D,texture)
         for setting in (gl.GL_TEXTURE_MIN_FILTER,gl.GL_TEXTURE_MAG_FILTER):
@@ -64,8 +64,9 @@ def pick_mask(rgb, masks, scores, candidates, *, visible=True):
                 gl.glBindTexture(gl.GL_TEXTURE_2D,texture)
                 gl.glTexImage2D(gl.GL_TEXTURE_2D,0,gl.GL_RGBA8,w,h,0,gl.GL_RGBA,gl.GL_UNSIGNED_BYTE,rgba)
                 cached=selected
-            view.draw(rgb,f"{len(candidates)} candidates | Green: instance {selected}, score {float(scores[selected]):.3f} | {hint}",
-                      instructions="Click: select | Left / Right / Tab: cycle | Number: instance | ENTER: use highlighted pipe | ESC: cancel",
+            detail=f"score {float(scores[selected]):.3f}" if scores is not None else f"{int(masks[selected].sum())} pixels"
+            view.draw(rgb,f"{len(candidates)} candidates | Green: {label} {selected}, {detail} | {hint}",
+                      instructions="Click: select | Left / Right / Tab: cycle | Number: select | ENTER: use highlighted region | ESC: cancel",
                       overlay=overlay)
             clock.tick(30)
     finally:

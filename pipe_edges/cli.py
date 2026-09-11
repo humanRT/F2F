@@ -67,6 +67,7 @@ def main(argv=None):
         command.add_argument("--checkpoint", help="Local SAM3 checkpoint; otherwise official HF download")
         command.add_argument("--threshold", type=float, default=.5)
         command.add_argument("--instance", type=int)
+        command.add_argument("--region",type=int,help="Visible connected section within the selected mask (0 is largest)")
         command.add_argument("--seed", type=int, nargs=2, metavar=("X", "Y"))
         command.add_argument("--edge-samples", type=int, default=300)
         command.add_argument("--inset-px", type=float, default=1.)
@@ -186,7 +187,7 @@ def main(argv=None):
                     edge_parameters = (data["edge_station_parameter"], data["edge_station_parameter"])
             meta = {"source": str(Path(args.input).resolve())}
         else:
-            from .vision import Intrinsics, extract_edges, lift_edge_adaptive
+            from .vision import Intrinsics, extract_edges, lift_edge_adaptive, select_mask_region
             progress("Input", "Loading RGB, depth and calibration...")
             intr = Intrinsics.load(args.intrinsics)
             with Image.open(args.rgb) as image:
@@ -229,6 +230,11 @@ def main(argv=None):
                 raise ValueError("Mask and depth dimensions differ.")
             if args.edge_samples < 16:
                 raise ValueError("--edge-samples must be >=16.")
+            Image.fromarray(mask.astype(np.uint8)*255).save(folder/"mask_instance.png")
+            mask,region_info=select_mask_region(mask,region=args.region,seed=args.seed,rgb=rgb,interactive=args.show)
+            meta.update(region_info)
+            if region_info["excluded_mask_pixels"]:
+                progress("Mask",f"Using visible section {region_info['selected_region']}; excluded {region_info['excluded_mask_pixels']} pixels outside it.")
             selected_mask = mask.copy()
             Image.fromarray(selected_mask.astype(np.uint8)*255).save(folder / "mask_selected.png")
             progress("Edges", "Tracing the two pipe boundaries...")
@@ -336,11 +342,15 @@ def main(argv=None):
         if args.command != "edges":
             from .gl_scene import point_cloud
             extra.update(point_cloud(depth, rgb, selected_mask, intr))
+            capture_info=json.loads(Path(args.intrinsics).read_text(encoding="utf-8-sig"))
+            meta["sampling_time_s"]=capture_info.get("sampling_time_s")
+            meta["sampling_time_definition"]="Burst acquisition including motion restarts; excludes warmup, user wait, fusion and model processing."
         summary = save_result(folder, result, left, right, metadata=meta, extra=extra,
                               show=args.show and args.matplotlib, block=False,
                               intrinsics=intr if args.command != "edges" else None)
         print(json.dumps(summary, indent=2))
         progress("Output", str(folder.resolve()))
+        progress("Output", f"Latest results: {Path(__file__).resolve().parents[1] / 'results.json'}")
         if result.valid.sum() < 3:
             print("Insufficient paired stations. Inspect status arrays, mask and depth alignment.", flush=True)
         if not result.converged:

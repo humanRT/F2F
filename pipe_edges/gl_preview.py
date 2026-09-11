@@ -25,7 +25,8 @@ class GLPreview:
             pygame.display.gl_set_attribute(pygame.GL_DOUBLEBUFFER, 1)
             scale = min(1., 1200/width, 800/height)
             flags = pygame.OPENGL | pygame.DOUBLEBUF | (pygame.RESIZABLE if visible else pygame.HIDDEN)
-            pygame.display.set_mode((round(width*scale), round(height*scale)), flags)
+            from .gl_context import create_window
+            create_window(pygame,GL,(round(width*scale), round(height*scale)),flags)
             pygame.display.set_caption("F2F - Live camera")
             self.panel = InstructionsPanel(pygame, GL)
             self.renderer = GL.glGetString(GL.GL_RENDERER).decode(errors="replace")

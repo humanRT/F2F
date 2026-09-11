@@ -29,7 +29,14 @@ def save_result(folder, result, left, right, *, metadata=None, extra=None, show=
                "iterations": result.iterations, "converged": result.converged,
                "last_movement_m": result.movement_m if np.isfinite(result.movement_m) else None,
                **(metadata or {})}
-    (folder / "summary.json").write_text(json.dumps(summary, indent=2, allow_nan=False), encoding="utf-8")
+    summary["result_directory"]=str(folder.resolve())
+    serialized=json.dumps(summary, indent=2, allow_nan=False)
+    (folder / "summary.json").write_text(serialized, encoding="utf-8")
+    # Keep the latest report beside setting.json, independent of the working directory.
+    latest=Path(__file__).resolve().parents[1]/"results.json"
+    temporary=latest.with_suffix(".json.tmp")
+    temporary.write_text(serialized, encoding="utf-8")
+    temporary.replace(latest)
     display = tuple(arrays[k] for k in ("smoothed_left", "smoothed_right", "smoothed_midpoints")) if "smoothed_left" in arrays else None
     mesh = tuple(arrays[k] for k in ("mesh_vertices", "mesh_faces", "pipe_axis", "pipe_radius_m")) if "mesh_vertices" in arrays else None
     plot_3d(folder, result, left, right, show=show, block=block, intrinsics=intrinsics, display=display, mesh=mesh)

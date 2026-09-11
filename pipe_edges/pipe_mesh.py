@@ -123,6 +123,7 @@ def fit_pipe(left, right, *, surface=None, inferred=None, surface_weights=None):
                          1.5*np.linalg.norm(np.diff(control, n=3, axis=0),axis=1),
                          .04*np.linalg.norm(control-initial_controls,axis=1), .1*(x[-1]-radius),
                          10.*np.linalg.norm(end_difference,axis=1),
+                         30.*np.maximum(np.linalg.norm(shift_grid,axis=1)-1.2*radius,0),
                          .15*np.sum(shift*tangent, axis=1)]
         result = least_squares(residual, params, bounds=(lower, upper),
                                loss="soft_l1", f_scale=.002, max_nfev=240,
@@ -154,7 +155,7 @@ def fit_pipe(left, right, *, surface=None, inferred=None, surface_weights=None):
     return axis, fitted_radius, info
 
 
-def cross_section_rings(axis, radius, count=12, segments=96):
+def cross_section_rings(axis, radius, count=12, segments=96, *, positions=None):
     """Equally spaced cross-section circles normal to the fitted axis."""
     axis=np.asarray(axis,float)
     distance=np.r_[0.,np.cumsum(np.linalg.norm(np.diff(axis,axis=0),axis=1))]
@@ -162,7 +163,10 @@ def cross_section_rings(axis, radius, count=12, segments=96):
         raise ValueError("Cross-sections require a nonzero axis length and positive radius.")
     good=np.r_[True,np.diff(distance)>1e-10]
     axis,distance=axis[good],distance[good]
-    stations=np.linspace(0,distance[-1],count)
+    positions=np.linspace(0,1,count) if positions is None else np.asarray(positions,float)
+    if positions.ndim!=1 or not np.isfinite(positions).all() or np.any((positions<0)|(positions>1)):
+        raise ValueError("Ring positions must be finite fractions along the axis, between 0 and 1.")
+    stations=positions*distance[-1]
     centers=np.column_stack([np.interp(stations,distance,axis[:,j]) for j in range(3)])
     tangents=np.gradient(axis,distance,axis=0)
     tangents=np.column_stack([np.interp(stations,distance,tangents[:,j]) for j in range(3)])
@@ -236,10 +240,11 @@ def simplify_mesh(vertices, faces, radius, target=1500):
                             "note": "Reduction failed geometry checks; retained original mesh."}
 
 
-def cut_open_ends(vertices, faces, axis):
+def cut_open_ends(vertices, faces, axis, *, tangents=None):
     """Clip at endpoint cross-section planes without adding closing faces."""
     vertices, faces = np.asarray(vertices,float), np.asarray(faces,int)
-    for origin, normal in ((axis[0],axis[1]-axis[0]), (axis[-1],axis[-2]-axis[-1])):
+    start,end=(axis[1]-axis[0],axis[-1]-axis[-2]) if tangents is None else tangents
+    for origin, normal in ((axis[0],start), (axis[-1],-end)):
         normal = normal/np.linalg.norm(normal)
         distance = (vertices-origin)@normal
         new_vertices = vertices.tolist()
